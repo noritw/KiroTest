@@ -628,6 +628,7 @@ const GameEngine = {
       invincibleTimer: 0,
       blinkVisible: true,
       blinkTimer: 0,
+      shootCooldown: 0,
     },
     pipes: [],
     bullets: [],
@@ -683,6 +684,7 @@ const GameEngine = {
     this.state.ghost.invincibleTimer = 0;
     this.state.ghost.blinkVisible = true;
     this.state.ghost.blinkTimer = 0;
+    this.state.ghost.shootCooldown = 0;
     this.state.pipes = [];
     this.state.bullets = [];
     this.state.powerUps = [];
@@ -782,6 +784,7 @@ const GameEngine = {
     state.ghost.invincibleTimer = 0;
     state.ghost.blinkVisible = true;
     state.ghost.blinkTimer = 0;
+    state.ghost.shootCooldown = 0;
 
     // Reset game objects
     state.pipes = [];
@@ -970,7 +973,12 @@ const GameEngine = {
     const ghost = state.ghost;
 
     // Handle spacebar input: fire only the two forward diagonal shots.
-    if (KeyboardInput.consumePressed(' ')) {
+    if (ghost.shootCooldown > 0) {
+      ghost.shootCooldown -= dt;
+    }
+    const spacePressed = KeyboardInput.consumePressed(' ');
+    const spaceDown = KeyboardInput.isDown(' ');
+    if ((spacePressed || spaceDown) && ghost.shootCooldown <= 0) {
       this.audioManager.playShoot?.();
       const ghostCenterX = ghost.worldX + ghost.width / 2;
       const ghostCenterY = ghost.y + ghost.height / 2;
@@ -993,6 +1001,7 @@ const GameEngine = {
           radius: 4,
         });
       }
+      ghost.shootCooldown = 400;
     }
 
     // Move all bullets

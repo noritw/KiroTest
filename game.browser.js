@@ -6,6 +6,25 @@
  */
 
 // ---------------------------------------------------------------------------
+// DeviceDetection — detects if device is mobile or computer
+// ---------------------------------------------------------------------------
+const DeviceDetection = {
+  isMobile: false,
+
+  init() {
+    // Check if device is mobile using touch support and user agent
+    this.isMobile = this._isMobileDevice();
+  },
+
+  _isMobileDevice() {
+    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+    const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
+    const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    return mobileRegex.test(userAgent) || hasTouch;
+  },
+};
+
+// ---------------------------------------------------------------------------
 // KeyboardInput — tracks key states and provides event-driven input interface
 // ---------------------------------------------------------------------------
 const KeyboardInput = {
@@ -51,6 +70,46 @@ const KeyboardInput = {
     if (this.keysPressed.size === 0) return false;
     this.keysPressed.clear();
     return true;
+  },
+};
+
+// ---------------------------------------------------------------------------
+// TouchInput — handles touch/tap input for mobile devices
+// ---------------------------------------------------------------------------
+const TouchInput = {
+  isTapping: false,
+  tapPressed: false,
+
+  init() {
+    window.addEventListener('touchstart', (e) => {
+      this.isTapping = true;
+      this.tapPressed = true;
+    });
+    window.addEventListener('touchend', (e) => {
+      this.isTapping = false;
+    });
+    window.addEventListener('mousedown', (e) => {
+      // Only handle mouse clicks on canvas for mobile mode
+      if (e.target.id === 'gameCanvas') {
+        this.isTapping = true;
+        this.tapPressed = true;
+      }
+    });
+    window.addEventListener('mouseup', (e) => {
+      this.isTapping = false;
+    });
+  },
+
+  consumeTap() {
+    if (this.tapPressed) {
+      this.tapPressed = false;
+      return true;
+    }
+    return false;
+  },
+
+  isTapActive() {
+    return this.isTapping;
   },
 };
 
@@ -531,6 +590,7 @@ const Renderer = {
     const { ctx, canvas } = this;
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
+    const isMobile = DeviceDetection.isMobile;
 
     ctx.save();
     ctx.fillStyle = 'rgba(0, 0, 0, 0.48)';
@@ -543,11 +603,16 @@ const Renderer = {
     ctx.fillText('Kiro Ghost Shooter', cx, cy - 125);
 
     ctx.font = '20px Arial';
-    ctx.fillText('使用 ↑ ↓ 操作角色', cx, cy - 45);
-    ctx.fillText('按空白鍵發射子彈', cx, cy - 12);
-
-    ctx.font = 'bold 20px Arial';
-    ctx.fillText('按任意鍵開始', cx, cy + 80);
+    if (isMobile) {
+      ctx.fillText('點擊螢幕往上飛行', cx, cy - 45);
+      ctx.fillText('不點擊則緩慢下降', cx, cy - 12);
+      ctx.font = 'bold 20px Arial';
+      ctx.fillText('點擊螢幕開始', cx, cy + 80);
+    } else {
+      ctx.fillText('使用 ↑ ↓ 操作角色', cx, cy - 45);
+      ctx.font = 'bold 20px Arial';
+      ctx.fillText('按任意鍵開始', cx, cy + 80);
+    }
     ctx.restore();
   },
 
@@ -555,6 +620,7 @@ const Renderer = {
     const { ctx, canvas } = this;
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
+    const isMobile = DeviceDetection.isMobile;
 
     ctx.save();
     ctx.fillStyle = 'rgba(0, 0, 0, 0.48)';
@@ -566,7 +632,11 @@ const Renderer = {
     ctx.font = 'bold 38px Arial';
     ctx.fillText('暫停', cx, cy - 20);
     ctx.font = '20px Arial';
-    ctx.fillText('按 Enter 繼續', cx, cy + 35);
+    if (isMobile) {
+      ctx.fillText('點擊螢幕繼續', cx, cy + 35);
+    } else {
+      ctx.fillText('按 Enter 繼續', cx, cy + 35);
+    }
     ctx.restore();
   },
 
@@ -578,6 +648,7 @@ const Renderer = {
     const { ctx, canvas } = this;
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
+    const isMobile = DeviceDetection.isMobile;
 
     ctx.save();
     ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
@@ -593,7 +664,11 @@ const Renderer = {
     ctx.fillText('Score: ' + score, cx, cy);
 
     ctx.font = '18px Arial';
-    ctx.fillText('Press Space or Enter to restart', cx, cy + 45);
+    if (isMobile) {
+      ctx.fillText('點擊螢幕重新開始', cx, cy + 45);
+    } else {
+      ctx.fillText('Press Space or Enter to restart', cx, cy + 45);
+    }
     ctx.restore();
   },
 };
@@ -655,6 +730,12 @@ const GameEngine = {
     this.audioManager = audioManager;
     this.renderer = renderer;
 
+    // Resize canvas for mobile devices
+    if (DeviceDetection.isMobile) {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+
     // Read persisted high score from localStorage
     let savedHighScore = 0;
     try {
@@ -710,7 +791,7 @@ const GameEngine = {
     this.lastTimestamp = timestamp;
 
     if (this.state.mode === 'start') {
-      if (KeyboardInput.consumeAnyPressed()) {
+      if (KeyboardInput.consumeAnyPressed() || TouchInput.consumeTap()) {
         this.startGame();
       }
       this.renderer.render(this.state);
@@ -718,7 +799,7 @@ const GameEngine = {
     }
 
     if (this.state.mode === 'paused') {
-      if (KeyboardInput.consumePressed('Enter')) {
+      if (KeyboardInput.consumePressed('Enter') || TouchInput.consumeTap()) {
         this.state.mode = 'playing';
         this.audioManager.playBgm?.();
       }
@@ -727,7 +808,7 @@ const GameEngine = {
     }
 
     if (this.state.mode === 'gameover') {
-      if (KeyboardInput.consumePressed(' ') || KeyboardInput.consumePressed('Enter')) {
+      if (KeyboardInput.consumePressed(' ') || KeyboardInput.consumePressed('Enter') || TouchInput.consumeTap()) {
         this.startGame();
       }
       this.renderer.render(this.state);
@@ -856,17 +937,37 @@ const GameEngine = {
    */
   _updateGhost(dt) {
     const ghost = this.state.ghost;
-    const moveSpeed = 5;
+    const isMobile = DeviceDetection.isMobile;
 
-    if (KeyboardInput.isDown('ArrowUp')) {
-      ghost.vy = -moveSpeed;
-      if (KeyboardInput.consumePressed('ArrowUp')) {
+    if (isMobile) {
+      // Flappy Bird-style movement for mobile
+      const gravity = 0.3;
+      const jumpForce = -6;
+      const maxFallSpeed = 3;
+
+      if (TouchInput.consumeTap()) {
+        ghost.vy = jumpForce;
         this.audioManager.playJump();
+      } else {
+        ghost.vy += gravity;
+        if (ghost.vy > maxFallSpeed) {
+          ghost.vy = maxFallSpeed;
+        }
       }
-    } else if (KeyboardInput.isDown('ArrowDown')) {
-      ghost.vy = moveSpeed;
     } else {
-      ghost.vy = 0;
+      // Desktop keyboard controls
+      const moveSpeed = 5;
+
+      if (KeyboardInput.isDown('ArrowUp')) {
+        ghost.vy = -moveSpeed;
+        if (KeyboardInput.consumePressed('ArrowUp')) {
+          this.audioManager.playJump();
+        }
+      } else if (KeyboardInput.isDown('ArrowDown')) {
+        ghost.vy = moveSpeed;
+      } else {
+        ghost.vy = 0;
+      }
     }
 
     ghost.y += ghost.vy;
@@ -972,13 +1073,11 @@ const GameEngine = {
     const { state, canvas } = this;
     const ghost = state.ghost;
 
-    // Handle spacebar input: fire only the two forward diagonal shots.
+    // Auto-fire bullets for both desktop and mobile (400ms cooldown)
     if (ghost.shootCooldown > 0) {
       ghost.shootCooldown -= dt;
     }
-    const spacePressed = KeyboardInput.consumePressed(' ');
-    const spaceDown = KeyboardInput.isDown(' ');
-    if ((spacePressed || spaceDown) && ghost.shootCooldown <= 0) {
+    if (ghost.shootCooldown <= 0) {
       this.audioManager.playShoot?.();
       const ghostCenterX = ghost.worldX + ghost.width / 2;
       const ghostCenterY = ghost.y + ghost.height / 2;
@@ -1330,7 +1429,9 @@ if (typeof document !== 'undefined') {
     const canvas = document.getElementById('gameCanvas');
     if (!canvas) return;
 
+    DeviceDetection.init();
     KeyboardInput.init();
+    TouchInput.init();
     AudioManager.init();
     Renderer.init(canvas);
     GameEngine.init(canvas, AudioManager, Renderer);
